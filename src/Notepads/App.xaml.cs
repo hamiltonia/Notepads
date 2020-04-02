@@ -7,7 +7,6 @@
     using Microsoft.AppCenter;
     using Microsoft.AppCenter.Analytics;
     using Microsoft.AppCenter.Crashes;
-    using Microsoft.Gaming.XboxGameBar;
     using Microsoft.Toolkit.Uwp.Helpers;
     using Notepads.Controls.Settings;
     using Notepads.Services;
@@ -16,6 +15,7 @@
     using Windows.ApplicationModel;
     using Windows.ApplicationModel.Activation;
     using Windows.ApplicationModel.Core;
+    using Windows.System.UserProfile;
     using Windows.UI;
     using Windows.UI.ViewManagement;
     using Windows.UI.Xaml;
@@ -28,7 +28,7 @@
 
         public static Guid Id { get; } = Guid.NewGuid();
 
-        public static bool IsFirstInstance;
+        public static bool IsFirstInstance = false;
         public static bool IsGameBarWidget = false;
 
         private const string AppCenterSecret = null;
@@ -127,14 +127,16 @@
 
         private async System.Threading.Tasks.Task ActivateAsync(IActivatedEventArgs e)
         {
+            bool rootFrameCreated = false;
             if (!(Window.Current.Content is Frame rootFrame))
             {
                 rootFrame = CreateRootFrame(e);
                 Window.Current.Content = rootFrame;
-            }
+                rootFrameCreated = true;
 
-            ThemeSettingsService.Initialize();
-            EditorSettingsService.Initialize();
+                ThemeSettingsService.Initialize();
+                EditorSettingsService.Initialize();
+            }
 
             var appLaunchSettings = new Dictionary<string, string>()
             {
@@ -170,9 +172,11 @@
                 throw new Exception("AppFailedToActivate", ex);
             }
 
-            Window.Current.Activate();
-
-            ExtendAcrylicIntoTitleBar();
+            if (rootFrameCreated)
+            {
+                Window.Current.Activate();
+                ExtendAcrylicIntoTitleBar();
+            }
         }
 
         private Frame CreateRootFrame(IActivatedEventArgs e)
