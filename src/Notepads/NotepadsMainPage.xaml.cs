@@ -216,8 +216,8 @@
             MenuCreateNewButton.Click += (sender, args) => NotepadsCore.OpenNewTextEditor(_defaultNewFileName);
             MenuCreateNewWindowButton.Click += async (sender, args) => await OpenNewAppInstance();
             MenuOpenFileButton.Click += async (sender, args) => await OpenNewFiles();
-            MenuSaveButton.Click += async (sender, args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: false);
-            MenuSaveAsButton.Click += async (sender, args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: true);
+            MenuSaveButton.Click += async (sender, args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: false, widget:_widget);
+            MenuSaveAsButton.Click += async (sender, args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: true, widget:_widget);
             MenuSaveAllButton.Click += async (sender, args) =>
             {
                 var success = false;

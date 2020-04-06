@@ -5,10 +5,13 @@
     using System.Threading.Tasks;
     using Windows.Graphics.Printing;
     using Windows.Storage;
+    using Microsoft.Gaming.XboxGameBar;
     using Notepads.Controls.Print;
     using Notepads.Controls.TextEditor;
     using Notepads.Services;
     using Notepads.Utilities;
+    using Windows.Foundation;
+    using Windows.ApplicationModel.Core;
 
     public sealed partial class NotepadsMainPage
     {
@@ -105,7 +108,7 @@
             return successCount;
         }
 
-        private async Task<bool> Save(ITextEditor textEditor, bool saveAs, bool ignoreUnmodifiedDocument = false, bool rebuildOpenRecentItems = true)
+        private async Task<bool> Save(ITextEditor textEditor, bool saveAs, bool ignoreUnmodifiedDocument = false, bool rebuildOpenRecentItems = true, XboxGameBarWidget widget = null)
         {
             if (textEditor == null) return false;
 
@@ -122,7 +125,30 @@
                     !await FileSystemUtility.FileIsWritable(textEditor.EditingFile))
                 {
                     NotepadsCore.SwitchTo(textEditor);
-                    file = await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+
+                    Microsoft.Gaming.XboxGameBar.ForegroundWorkHandler lmb = (() =>
+                    {
+                        var taskCompletionSource = new TaskCompletionSource<StorageFile>();
+                        return Task.Run(async () =>
+                            {
+                                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                                {
+                                    taskCompletionSource.SetResult(await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync());
+                                });
+                                file = await taskCompletionSource.Task;
+                                return true;
+                            }).AsAsyncOperation<bool>();
+                    });
+
+                    if (widget != null)
+                    {
+                        await widget.ExecuteForegroundWork(Work(textEditor, saveAs));
+                    }
+                    else
+                    {
+                        await lmb.Invoke();
+                    }
+
                     NotepadsCore.FocusOnTextEditor(textEditor);
                     if (file == null)
                     {
@@ -140,6 +166,7 @@
                 {
                     await BuildOpenRecentButtonSubItems();
                 }
+
                 return true;
             }
             catch (Exception ex)
@@ -152,6 +179,18 @@
                 }
                 return false;
             }
+        }
+
+        public ForegroundWorkHandler Work(ITextEditor textEditor, bool saveAs)
+        {
+                        return Task.Run(async () =>
+                            {
+                                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                                {
+                                    await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+                                });
+                                return true;
+                            }).AsAsyncOperation<bool>();
         }
 
         public async Task Print(ITextEditor textEditor)
