@@ -127,6 +127,12 @@
                     NotepadsCore.SwitchTo(textEditor);
 
                     // Create a lambda for the UI work and re-use if not running as a Game Bar widget
+                    // If you are doing async work on the UI thread inside this lambda, it must be awaited before the lambda returns to ensure Game Bar is
+                    // in the right state for the entirety of the foreground operation.
+                    // We recommend using the Dispatcher RunTaskAsync task extension to make this easier
+                    // Look at Extensions/DispatcherTaskExtensions.cs
+                    // For more information you can read this blog post: https://devblogs.microsoft.com/oldnewthing/20190327-00/?p=102364
+                    // For another approach more akin to how C++/WinRT handles awaitable thread switching, read this blog post: https://devblogs.microsoft.com/oldnewthing/20190328-00/?p=102368
                     ForegroundWorkHandler foregroundWork = (() =>
                     {
                         return Task.Run(async () =>
