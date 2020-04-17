@@ -126,27 +126,28 @@
                 {
                     NotepadsCore.SwitchTo(textEditor);
 
-                    Microsoft.Gaming.XboxGameBar.ForegroundWorkHandler lmb = (() =>
+                    // Create a lambda for the UI work and re-use if not running as a Game Bar widget
+                    ForegroundWorkHandler foregroundWork = (() =>
                     {
-                        var taskCompletionSource = new TaskCompletionSource<StorageFile>();
                         return Task.Run(async () =>
-                            {
-                                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
-                                {
-                                    taskCompletionSource.SetResult(await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync());
-                                });
-                                file = await taskCompletionSource.Task;
-                                return true;
-                            }).AsAsyncOperation<bool>();
+                        {
+                            file = await Dispatcher.RunTaskAsync<StorageFile>(async () =>
+                               {
+                                   return await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+                               });
+
+                            return true;
+                        }).AsAsyncOperation<bool>();
                     });
 
                     if (widget != null)
                     {
-                        await widget.ExecuteForegroundWork(Work(textEditor, saveAs));
+                        var foregroundWorker = new XboxGameBarForegroundWorker(widget, foregroundWork); 
+                        await foregroundWorker.ExecuteAsync();
                     }
                     else
                     {
-                        await lmb.Invoke();
+                        await foregroundWork.Invoke();
                     }
 
                     NotepadsCore.FocusOnTextEditor(textEditor);
@@ -179,18 +180,6 @@
                 }
                 return false;
             }
-        }
-
-        public ForegroundWorkHandler Work(ITextEditor textEditor, bool saveAs)
-        {
-                        return Task.Run(async () =>
-                            {
-                                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
-                                {
-                                    await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
-                                });
-                                return true;
-                            }).AsAsyncOperation<bool>();
         }
 
         public async Task Print(ITextEditor textEditor)
