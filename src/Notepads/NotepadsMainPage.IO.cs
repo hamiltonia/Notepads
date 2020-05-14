@@ -2,10 +2,12 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using System.Threading.Tasks;
     using Windows.Graphics.Printing;
     using Windows.Storage;
     using Microsoft.Gaming.XboxGameBar;
+    using Microsoft.Gaming.XboxGameBar.Restricted;
     using Notepads.Controls.Print;
     using Notepads.Controls.TextEditor;
     using Notepads.Services;
@@ -118,6 +120,7 @@
             }
 
             StorageFile file = null;
+            IAsyncOperation<StorageFile> fileOp = null;
             try
             {
                 if (textEditor.EditingFile == null || saveAs ||
@@ -136,20 +139,22 @@
                     ForegroundWorkHandler foregroundWork = (() =>
                     {
                         return Task.Run(async () =>
-                        {
-                            file = await Dispatcher.RunTaskAsync<StorageFile>(async () =>
+                            {
+                                file = await Dispatcher.RunTaskAsync<StorageFile>(async () =>
                                {
-                                   return await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+                                   fileOp = FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+                                   return await fileOp;
                                });
 
-                            return true;
-                        }).AsAsyncOperation<bool>();
+                                return true;
+                            }).AsAsyncOperation<bool>();
                     });
 
                     if (widget != null)
                     {
-                        var foregroundWorker = new XboxGameBarForegroundWorker(widget, foregroundWork); 
-                        await foregroundWorker.ExecuteAsync();
+                        var foregroundWorker = new XboxGameBarForegroundWorker(widget, foregroundWork);
+                        var executeOperation = foregroundWorker.ExecuteAsync();
+                        await executeOperation;
                     }
                     else
                     {
@@ -178,6 +183,10 @@
             }
             catch (Exception ex)
             {
+                if (fileOp != null)
+                {
+                    fileOp.Cancel();
+                }
                 var fileSaveErrorDialog = NotepadsDialogFactory.GetFileSaveErrorDialog((file == null) ? string.Empty : file.Path, ex.Message);
                 await DialogManager.OpenDialogAsync(fileSaveErrorDialog, awaitPreviousDialog: false);
                 if (!fileSaveErrorDialog.IsAborted)
