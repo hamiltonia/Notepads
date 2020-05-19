@@ -2,13 +2,18 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using System.Threading.Tasks;
     using Windows.Graphics.Printing;
     using Windows.Storage;
+    using Microsoft.Gaming.XboxGameBar;
+    using Microsoft.Gaming.XboxGameBar.Restricted;
     using Notepads.Controls.Print;
     using Notepads.Controls.TextEditor;
     using Notepads.Services;
     using Notepads.Utilities;
+    using Windows.Foundation;
+    using Windows.ApplicationModel.Core;
 
     public sealed partial class NotepadsMainPage
     {
@@ -105,7 +110,7 @@
             return successCount;
         }
 
-        private async Task<bool> Save(ITextEditor textEditor, bool saveAs, bool ignoreUnmodifiedDocument = false, bool rebuildOpenRecentItems = true)
+        private async Task<bool> Save(ITextEditor textEditor, bool saveAs, bool ignoreUnmodifiedDocument = false, bool rebuildOpenRecentItems = true, XboxGameBarWidget widget = null)
         {
             if (textEditor == null) return false;
 
@@ -115,6 +120,7 @@
             }
 
             StorageFile file = null;
+            IAsyncOperation<StorageFile> fileOp = null;
             try
             {
                 if (textEditor.EditingFile == null || saveAs ||
@@ -122,7 +128,39 @@
                     !await FileSystemUtility.FileIsWritable(textEditor.EditingFile))
                 {
                     NotepadsCore.SwitchTo(textEditor);
-                    file = await FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+
+                    // Create a lambda for the UI work and re-use if not running as a Game Bar widget
+                    // If you are doing async work on the UI thread inside this lambda, it must be awaited before the lambda returns to ensure Game Bar is
+                    // in the right state for the entirety of the foreground operation.
+                    // We recommend using the Dispatcher RunTaskAsync task extension to make this easier
+                    // Look at Extensions/DispatcherTaskExtensions.cs
+                    // For more information you can read this blog post: https://devblogs.microsoft.com/oldnewthing/20190327-00/?p=102364
+                    // For another approach more akin to how C++/WinRT handles awaitable thread switching, read this blog post: https://devblogs.microsoft.com/oldnewthing/20190328-00/?p=102368
+                    ForegroundWorkHandler foregroundWork = (() =>
+                    {
+                        return Task.Run(async () =>
+                            {
+                                file = await Dispatcher.RunTaskAsync<StorageFile>(async () =>
+                               {
+                                   fileOp = FilePickerFactory.GetFileSavePicker(textEditor, saveAs).PickSaveFileAsync();
+                                   return await fileOp;
+                               });
+
+                                return true;
+                            }).AsAsyncOperation<bool>();
+                    });
+
+                    if (widget != null)
+                    {
+                        var foregroundWorker = new XboxGameBarForegroundWorker(widget, foregroundWork);
+                        var executeOperation = foregroundWorker.ExecuteAsync();
+                        await executeOperation;
+                    }
+                    else
+                    {
+                        await foregroundWork.Invoke();
+                    }
+
                     NotepadsCore.FocusOnTextEditor(textEditor);
                     if (file == null)
                     {
@@ -140,10 +178,15 @@
                 {
                     await BuildOpenRecentButtonSubItems();
                 }
+
                 return true;
             }
             catch (Exception ex)
             {
+                if (fileOp != null)
+                {
+                    fileOp.Cancel();
+                }
                 var fileSaveErrorDialog = NotepadsDialogFactory.GetFileSaveErrorDialog((file == null) ? string.Empty : file.Path, ex.Message);
                 await DialogManager.OpenDialogAsync(fileSaveErrorDialog, awaitPreviousDialog: false);
                 if (!fileSaveErrorDialog.IsAborted)
